@@ -166,6 +166,9 @@ func (ne *bizApplyNodeExecutor) checkCanSkip(execCtx *NodeExecutionContext, last
 		if !slices.Equal(thisNodeCfg.Domains, lastNodeCfg.Domains) {
 			return false, "the configuration item 'Domains' changed"
 		}
+		if !slices.Equal(thisNodeCfg.IPAddrs, lastNodeCfg.IPAddrs) {
+			return false, "the configuration item 'IPAddrs' changed"
+		}
 		if thisNodeCfg.ContactEmail != lastNodeCfg.ContactEmail {
 			return false, "the configuration item 'ContactEmail' changed"
 		}
@@ -189,6 +192,21 @@ func (ne *bizApplyNodeExecutor) checkCanSkip(execCtx *NodeExecutionContext, last
 		}
 		if thisNodeCfg.KeyAlgorithm != lastNodeCfg.KeyAlgorithm {
 			return false, "the configuration item 'KeyAlgorithm' changed"
+		}
+		if thisNodeCfg.KeySource == BizApplyKeySourceCustom && thisNodeCfg.KeyContent != lastNodeCfg.KeyContent {
+			return false, "the configuration item 'KeyContent' changed"
+		}
+		if thisNodeCfg.ValidityLifetime != lastNodeCfg.ValidityLifetime {
+			return false, "the configuration item 'ValidityLifetime' changed"
+		}
+		if thisNodeCfg.PreferredChain != lastNodeCfg.PreferredChain {
+			return false, "the configuration item 'PreferredChain' changed"
+		}
+		if thisNodeCfg.ACMEProfile != lastNodeCfg.ACMEProfile {
+			return false, "the configuration item 'ACMEProfile' changed"
+		}
+		if thisNodeCfg.DisableCommonName != lastNodeCfg.DisableCommonName {
+			return false, "the configuration item 'DisableCommonName' changed"
 		}
 	}
 
@@ -288,8 +306,11 @@ func (ne *bizApplyNodeExecutor) executeObtain(execCtx *NodeExecutionContext, nod
 	}
 
 	// 构造证书申请请求
+	legoDomains := make([]string, 0)
+	legoDomains = append(legoDomains, nodeCfg.Domains...)
+	legoDomains = append(legoDomains, nodeCfg.IPAddrs...)
 	obtainReq := &certacme.ObtainCertificateRequest{
-		Domains:        nodeCfg.Domains,
+		DomainOrIPs:    legoDomains,
 		PrivateKeyType: legoKeyType,
 		PrivateKeyPEM: lo.
 			If(nodeCfg.KeySource == BizApplyKeySourceAuto, "").
@@ -313,6 +334,7 @@ func (ne *bizApplyNodeExecutor) executeObtain(execCtx *NodeExecutionContext, nod
 				}
 				return time.Now().Add(duration)
 			}),
+		NoCommonName:           nodeCfg.DisableCommonName,
 		ChallengeType:          nodeCfg.ChallengeType,
 		Provider:               nodeCfg.Provider,
 		ProviderAccessConfig:   providerAccessConfig,
@@ -391,6 +413,7 @@ func (ne *bizApplyNodeExecutor) executeObtain(execCtx *NodeExecutionContext, nod
 	legoClient, err := certacme.NewACMEClientWithAccount(legoUser, func(c *lego.Config) error {
 		c.UserAgent = "certimate"
 		c.Certificate.KeyType = legoKeyType
+		c.Certificate.DisableCommonName = obtainReq.NoCommonName
 		return nil
 	})
 	if err != nil {
